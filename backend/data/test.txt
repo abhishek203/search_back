@@ -1,0 +1,34 @@
+class ACDCInverter:
+    def __init__(self, input_voltage, input_current, efficiency):
+        """
+        Initialize the inverter with input parameters.
+        
+        :param input_voltage: Input voltage in Volts (V)
+        :param input_current: Input current in Amperes (A)
+        :param efficiency: Efficiency of the inverter (0 < efficiency <= 1)
+        """
+        self.input_voltage = input_voltage
+        self.input_current = input_current
+        self.efficiency = efficiency
+
+    def calculate_output_power(self):
+        """
+        Calculate the output power based on input power and efficiency.
+        
+        :return: Output power in Watts (W)
+        """
+        input_power = self.input_voltage * self.input_current
+        output_power = input_power * self.efficiency
+        return output_power
+
+    def calculate_output_voltage(self, output_current):
+        """
+        Calculate the output voltage given an output current.
+        Assumes constant power operation.
+        
+        :param output_current: Desired output current in Amperes (A)
+        :return: Output voltage in Volts (V)
+        """
+        output_power = self.calculate_output_power()
+        output_voltage = output_power / output_current if output_current != 0 else 0
+        return output_voltage
