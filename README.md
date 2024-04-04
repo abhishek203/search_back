@@ -16,3 +16,8 @@ cd backend
 pip install -r requirements.txt
 uvicorn docsearch:app --reload
 ```
+
+## To create vector database
+Put all the files in data folder
+
+Send POST request to http://127.0.0.1:8000/create-vector-db
