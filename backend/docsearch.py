@@ -20,15 +20,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.post("/create-vector-db/")
-async def create_vector_db():
+@app.get("/create-vector-db/")
+def create_vector_db():
     
     loader = DirectoryLoader("./data")
+    print(2)
     documents = loader.load()
     text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
     docs = text_splitter.split_documents(documents)
     embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
     db = FAISS.from_documents(docs, embeddings)
+    print(db)
     db.save_local("faiss_index")
     return {"message": "Vector database created successfully."}
     
@@ -42,5 +44,4 @@ async def inference(query: str):
     return {"response": False, "score": str(docs_and_scores[0][1])}
     
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    create_vector_db()
