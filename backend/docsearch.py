@@ -10,6 +10,7 @@ embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 app = FastAPI()
 origins = [
     "https://chat.openai.com",
+    "https://chatgpt.com",
 ]
 
 app.add_middleware(
@@ -36,10 +37,12 @@ def create_vector_db():
     
 @app.get("/inference/")
 async def inference(query: str):
-
+    print('starting')
     new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
     docs_and_scores = new_db.similarity_search_with_score(query)
+    print('docs')
     if docs_and_scores[0][1] < 1:
+        print(docs_and_scores[0][1])
         return {"response": True, "score": str(docs_and_scores[0][1])}
     return {"response": False, "score": str(docs_and_scores[0][1])}
     

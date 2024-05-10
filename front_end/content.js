@@ -27,13 +27,14 @@ function handlePaste(e) {
     // Prepare the data as URL-encoded string
     const encodedData = new URLSearchParams();
     encodedData.append('message', pastedText);
+    console.log(pastedText)
     const baseURL = "http://127.0.0.1:8000/inference";
-
+    console.log(encodedData)
     // Define your parameters
     const params = {
         query: encodedData
           };
-
+    console.log(params)
     // Function to convert object to query string
     const queryString = Object.keys(params)
         .map(key => key + '=' + encodeURIComponent(params[key]))
@@ -41,7 +42,7 @@ function handlePaste(e) {
 
     // Append parameters to the base URL
     const urlWithParams = `${baseURL}?${queryString}`;
-
+    console.log(urlWithParams)
     // API call with x-www-form-urlencoded data
     fetch(urlWithParams, {
       method: 'GET',
@@ -54,6 +55,7 @@ function handlePaste(e) {
     })
     .then(data => {
       if (data['response'] === true) {
+        console.log('Pasting confidential text is not allowed')
         alert('Pasting confidential text is not allowed on this website.');
       } else {
         e.target.value = combinedText;

@@ -1,5 +1,165 @@
-username: "admin"
-password: "admin"
+from enphase_equipment.oscilloscope.tektronix5000 import Tektronix5000
+import pandas as pd
+import numpy as np
+import os
+class OscilloscopeWrapper(Tektronix5000):
+    def __init__(self,info_dict):
+        super().__init__(info_dict['ip'])
+        self.voltage_channel_list = info_dict["voltage"]
+        self.current_channel_list = info_dict["current"]
+        self.results_dir_path = 'C:/results'
+        self.T = 1/50
+        self.f = 50
+        self.V = 230
+        self.I = 30
+        for voltage_channel in self.voltage_channel_list:
+            self.voltage_channel_setup(int(voltage_channel))
+        
+        for current_channel in self.current_channel_list:
+            self.current_channel_setup(int(current_channel))
+    
+    def set_results_dir(self, path : str):
+        self.results_dir_path = path
 
-api_key: "openai_api_key"
+    def set_timebase(self, range : int, position : int = 0):
+        self.set_timebase_position(position)
+        self.set_timebase_range(range = range)
 
+    def start_aquire(self):
+        self.write('ACQUIRE:STATE STOP')
+        self.write('ACQuire:STOPAfter SEQuence')
+        self.write('ACQUIRE:STATE 1')
+
+    def voltage_channel_setup(self,channel : int):
+        self.write(f'CH{channel}:POSition 2.18')
+        self.write(f'CH{channel}:SCAle 200')
+
+    def current_channel_setup(self,channel : int):
+        self.write(f'CH{channel}:POSition -2.18')
+        self.write(f'CH{channel}:SCAle 15')
+    
+
+    def _detect_trip_from_data(self,data,threshold):
+        if any(data.rms < threshold*0.85):
+            return True
+        return False
+
+    def _detect_swell_from_data(self,data,threshold):
+        did_swell = 0
+        did_reconnect = 0
+        swell_start = 0
+        swell_end = 0
+        for trip1 in range(0,len(data)):
+             if(data.loc[trip1]['rms']>threshold*1.1):
+                 did_swell=1
+                 swell_start=data.loc[trip1]['time']+0.2*self.T
+                 break
+        if(did_swell==1):
+            for reconnect in range(trip1+5,len(data)):
+                if(data.loc[reconnect]['rms']<threshold*1.1):
+                    did_reconnect=1
+                    swell_end=data.loc[reconnect]['time']-0.25*self.T 
+                    break
+        return [swell_start, swell_end, did_reconnect == 1]
+    
+    def detect_swell(self,data_type):
+        result = []
+
+        if data_type == 'voltage':
+            for voltage_channel in self.voltage_channel_list:
+                csv_data = pd.read_csv(self.results_dir_path+f'/scope_csv_voltage_{voltage_channel}.csv')
+                if self._detect_swell_from_data(csv_data,self.V):
+                    result.append(['CH' + str(voltage_channel)])
+            return result
+                
+        
+        if data_type == 'current':
+            for current_channel in self.current_channel_list:
+                csv_data = pd.read_csv(self.results_dir_path+f'/scope_scv_current_{current_channel}.csv')
+                self._detect_trip_from_data(csv_data,self.I)
+                if self._detect_swell_from_data(csv_data,self.V):
+                    result.append(['CH' + str(current_channel)])
+            return result    
+    
+    def detect_trip(self,type : str):
+        """
+        usage in testcase:
+        result =  detect_trip(voltage):
+        if result:
+           print('Trip found in ',result)
+        """
+        result = []
+
+        if type == 'voltage':
+            for voltage_channel in self.voltage_channel_list:
+                csv_data = pd.read_csv(self.results_dir_path+f'/scope_csv_voltage_{voltage_channel}.csv')
+                if self._detect_trip_from_data(csv_data,self.V):
+                    result.append(['CH' + str(voltage_channel)])
+            return result
+                
+        
+        if type == 'current':
+            for current_channel in self.current_channel_list:
+                csv_data = pd.read_csv(self.results_dir_path+f'/scope_scv_current_{current_channel}.csv')
+                self._detect_trip_from_data(csv_data)
+                if self._detect_trip_from_data(csv_data,self.I):
+                    result.append(['CH' + str(current_channel)])
+            return result
+        
+
+    
+
+    def get_csv_data(self, data_type : str, region : str = "ROW"):
+        """type - voltage or current"""
+        if region == "NA":
+            self.f = 60
+            self.V = 240
+        else:
+           self.f = 50
+           self.V = 230
+
+        self.T = 1.0 / self.f
+        
+        dfs = []
+        if data_type == 'voltage':
+            for voltage_channel in self.voltage_channel_list:
+                xdata, ydata = self.wave_zoomed(channel=voltage_channel)
+                print(ydata)
+                df = pd.DataFrame({'time':xdata,'voltage':ydata})
+                dt = df.time.iloc[1] - df.time.iloc[0]
+                half_cycle_window = int(0.5 * self.T / dt)
+                V_t = df['voltage'] - df['voltage'].mean()  # remove offset in probe data
+                rms=np.sqrt((V_t**2).rolling(half_cycle_window, center=True).mean())
+                df['rms'] = rms
+                df['channel'] = voltage_channel
+                df.to_csv(self.results_dir_path+f'/scope_csv_voltage_{voltage_channel}.csv')
+            #     dfs.append(df)
+            # for df in dfs:
+            #     df['time'] = pd.to_datetime(df['time'])
+            #     merged_df = dfs[0]  # Initialize merged_df with the first DataFrame
+            #     for df in dfs[1:]:
+            #         merged_df = pd.merge_asof(merged_df, df, on='time')
+    
+            
+            # combined_csv_path = os.path.join(self.results_dir_path, 'combined_voltage_data.csv')
+            # merged_df.to_csv(combined_csv_path, index=False)
+
+        if data_type == 'current':
+            for current_channel in self.current_channel_list:
+                xdata, ydata = self.wave(channel=current_channel,sub_sample=1)
+                df = pd.DataFrame({'time':xdata,'current':ydata})
+                dt = df.time.iloc[1] - df.time.iloc[0]
+                half_cycle_window = int(0.5 * self.T / dt)
+                I_t = df['current'] - df['current'].mean()  # remove offset in current probe data
+                rms=np.sqrt((I_t**2).rolling(half_cycle_window, center=True).mean())
+                df['rms'] = rms
+                df['channel'] = current_channel
+            #     dfs.append(df)
+            # for df in dfs:
+            #     df['time'] = pd.to_datetime(df['time'])
+            #     merged_df = dfs[0]  # Initialize merged_df with the first DataFrame
+            #     for df in dfs[1:]:
+            #         merged_df = pd.merge_asof(merged_df, df, on='time')
+            
+            # combined_csv_path = os.path.join(self.results_dir_path, 'combined_current_data.csv')
+            # merged_df.to_csv(combined_csv_path, index=False)
